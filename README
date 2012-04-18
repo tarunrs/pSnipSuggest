@@ -1,0 +1,5 @@
+pSnipSuggest suggests SQL snippets based on a partial query. These suggestions are based on the queries in the query log. 
+
+References:
+[1] SnipSuggest: Context-Aware Autocompletion for SQL
+[2] Tornedo Web server: http://www.tornadoweb.org/
