@@ -38,10 +38,10 @@ identifier = ~keyword + Word(alphas, alphanums+"_")
 
 collation_name = identifier.copy()
 #column_name = identifier.copy()
-column_name = Upcase( delimitedList( identifier, ".", combine=True ) )
+column_name = delimitedList( identifier, ".", combine=True )
 columnNameList = Group( delimitedList( column_name ) )
 column_alias = identifier.copy()
-table_name = Upcase( delimitedList( identifier, ".", combine=True ) )
+table_name = delimitedList( identifier, ".", combine=True )
 table_alias = identifier.copy()
 index_name = identifier.copy()
 function_name = identifier.copy()
@@ -83,13 +83,17 @@ realNum = Combine( Optional(arithSign) + ( Word( nums ) + "." + Optional( Word(n
 intNum = Combine( Optional(arithSign) + Word( nums ) + 
             Optional( E + Optional("+") + Word(nums) ) )
 
+intNum.setParseAction( replaceWith("#") )
+realNum.setParseAction( replaceWith("#") )
+quotedString.setParseAction( replaceWith("#") )
+
 columnRval = realNum | intNum | quotedString | column_name # need to add support for alg expressions
 whereCondition = Group(
     ( column_name + binop + columnRval ) |
     ( column_name + in_ + "(" + delimitedList( columnRval ) + ")" ) |
     ( "(" + whereExpression + ")" )
     )
-whereExpression << whereCondition + ZeroOrMore( ( and_ | or_ ) + whereExpression ) 
+whereExpression << whereCondition + ZeroOrMore( Suppress( and_ | or_ ) + whereExpression ) 
 
 expr_term = (
     CAST + LPAR + expr + AS + type_name + RPAR |
@@ -123,17 +127,17 @@ join_constraint = Optional(ON + expr | USING + LPAR + Group(delimitedList(column
 join_op = COMMA | (Optional(NATURAL) + Optional(INNER | CROSS | LEFT + OUTER | LEFT | OUTER) + JOIN)
 
 join_source = Forward()
-single_source = ( Group((Group(database_name("database") + ".." + table_name("table"))| table_valued_function("table_function") | table_name("table")) + 
-                    Optional(Optional(AS) + table_alias("table_alias"))) +
+single_source = ( Group((Group(database_name("database") + "." + table_name("table"))| table_valued_function("table_function") | table_name("table")) + 
+                    Optional(Suppress(Optional(AS)) + table_alias("table_alias"))) +
                     Optional(INDEXED + BY + index_name("name") | NOT + INDEXED)("index") |  
                   (LPAR + select_stmt + RPAR + Optional(Optional(AS) + table_alias)) | 
                   (LPAR + join_source + RPAR) )
 
 join_source << single_source + ZeroOrMore(join_op + single_source + join_constraint)
 
-result_column = Group(aggregate_function + Optional(Optional(AS) + column_alias("aggregate_function_alias")) | 
-			user_defined_function + Optional(Optional(AS) + column_alias("user_function_alias")) |
-		 column_name + Optional(Optional(AS) + column_alias("column_alias")) 
+result_column = Group(aggregate_function + Optional(Suppress(Optional(AS)) + column_alias("aggregate_function_alias")) | 
+			user_defined_function + Optional(Suppress(Optional(AS)) + column_alias("user_function_alias")) |
+		 column_name("column") + Optional(Suppress(Optional(AS)) + column_alias("column_alias")) 
 		|"*" 
 		| table_name + "." + "*" 
 		|(expr + Optional(Optional(AS) + column_alias("column_alias")))
@@ -148,12 +152,8 @@ select_stmt << (select_core + ZeroOrMore(compound_operator + select_core) +
                 Optional(ORDER + BY + Group(delimitedList(ordering_term))("order_by_terms")) +
                 Optional(LIMIT + (integer + OFFSET + integer | integer + COMMA + integer)))
 
-tests = """\
-    SELECT c1.asd AS col1 FROM function1('a', 1, 2) AS t1, table12 AS t2 WHERE p.pid = p.qid group by c1, c2 order by c1 asc, c2 desc
-""".splitlines()
 
-
-def sql_parse(query):
+def parse(query):
     try:
         tokens = select_stmt.parseString(query)
         return tokens
