@@ -138,8 +138,8 @@ join_source << single_source + ZeroOrMore(join_op + single_source + join_constra
 result_column = Group(aggregate_function + Optional(Suppress(Optional(AS)) + column_alias("aggregate_function_alias")) | 
 			user_defined_function + Optional(Suppress(Optional(AS)) + column_alias("user_function_alias")) |
 		 column_name("column") + Optional(Suppress(Optional(AS)) + column_alias("column_alias")) 
-		|"*" 
-		| table_name + "." + "*" 
+		|"*"
+		| table_name + "." + "*"
 		|(expr + Optional(Optional(AS) + column_alias("column_alias")))
 		)
 select_core = (SELECT + Optional(DISTINCT | ALL) + Group(delimitedList(result_column))("columns") +
@@ -160,4 +160,103 @@ def parse(query):
     except ParseException, pe:
         print pe.msg
 
+SELECT_CLAUSE  = 1
+FROM_CLAUSE    = 2
+WHERE_CLAUSE   = 3
+GROUPBY_CLAUSE = 4
+ORDERBY_CLAUSE = 5
+HAVING_CLAUSE  = 6
+
+class ParsedQuery:
+  result = ParseResults #datatype that is returned by pyparsing
+  query_test = ""
+  features = []
+  features_string = ""
+  columns = []
+  tables = []
+  where_terms = []
+  order_by_terms = []
+  group_by_terms = []
+  table_aliases = {}
+  column_aliases = {}
+  def __init__(self, arg):
+    self.features = []
+    self.query_string = arg.replace( "'", '\\' + "'" ) # escape single quotes
+    self.result = parse(arg)
+    self.get_table_alias()
+    self.normalize_table_aliases()
+    self.get_column_alias()
+    self.normalize_column_aliases()
+    self.populate_features()
+  
+  def populate_features(self):
+    for term in self.result.columns:
+      if len(term.column) == 0:
+        feature = (term[0], SELECT_CLAUSE)
+      else:
+        feature = (term.column, SELECT_CLAUSE)
+      self.features.append(feature)
+      #self.columns.append(term.column)
+
+    for term in self.result.tables:
+      feature = (term.table, FROM_CLAUSE)
+      self.features.append(feature)
+      #self.tables.append(term.table)
+
+    for term in self.result.where_terms:
+      feature = (" ".join(term), WHERE_CLAUSE)
+      self.features.append(feature)
+      #self.where_terms.append(" ".join(term))
+
+    for term in self.result.group_by_terms:
+      feature = (" ".join(term), GROUPBY_CLAUSE)
+      self.features.append(feature)
+      #self.group_by_terms.append(" ".join(term))
+
+    for term in self.result.order_by_terms:
+      feature = (" ".join(term), ORDERBY_CLAUSE)
+      self.features.append(feature)
+      #self.order_by_terms.append(" ".join(term))
+
+  def dump(self):
+    print self.result.dump()
+
+  def normalize_table_aliases(self):
+    for term in self.result.where_terms:
+      for i in range(len(term)):
+        if term[i].split(".")[0] in self.table_aliases:
+          term[i] = self.table_aliases[term[i].split(".")[0]] + "." + "".join(term[i].split(".")[1:])
+    for i in range(len(self.result.columns)):
+      col = self.result.columns[i]
+      temp = col.column.split(".")
+      if len(temp) == 3:
+        #has db + tablename + columnname
+        if temp[1] in self.table_aliases:
+          self.result.columns[i].column = temp[0] + "." + self.table_aliases[temp[1]] + "." + temp[2]
+          self.result.columns[i][0] = temp[0] + "." + self.table_aliases[temp[1]] + "." + temp[2]
+
+      elif len(temp) == 2:
+	#has tablename + columnname
+        if temp[0] in self.table_aliases:
+          self.result.columns[i].column = self.table_aliases[temp[0]] + "." + temp[1]
+          self.result.columns[i][0] = self.table_aliases[temp[0]] + "." + temp[1]
+
+  def normalize_column_aliases(self):
+    # handle column aliases in orderby groupby and having clauses
+    for term in self.result.order_by_terms:
+      if term[0] in self.column_aliases:
+        term[0] = self.column_aliases[term[0]] 
+    for term in self.result.group_by_terms:
+      if term[0] in self.column_aliases:
+        term[0] = self.column_aliases[term[0]] 
+
+  def get_table_alias(self):
+    for t in self.result.tables :
+      if t.table_alias:
+        self.table_aliases[t.table_alias[0]] = t.table
+
+  def get_column_alias(self):
+    for c in self.result.columns :
+      if c.column_alias:
+        self.column_aliases[c.column_alias[0]] = c.column
 
