@@ -1,4 +1,5 @@
 from sqlparser import ParsedQuery
+from random import *
 import MySQLdb
 
 DATABASE_HOST = "localhost"
@@ -24,7 +25,7 @@ def find_feature_ids(features):
 
 def ssaccuracy(m, features):
   sql = "select qf.feature_id from QueryFeatures qf, (SELECT query_id from QueryFeatures where feature_id in ("+ ",".join(features) +") group by query_id having count(feature_id) = " + str(m)+") as sq where qf.query_id = sq.query_id AND qf.feature_id NOT IN ("+ ",".join(features) +") group by qf.feature_id order by count(sq.query_id) DESC;"
-  print sql
+  #print sql
   rows = []
   res = cursor.execute(sql)
   if res:
@@ -32,11 +33,12 @@ def ssaccuracy(m, features):
   return rows
 
 def clause (feature):
-  sql = "select clause from Features where id = "+ str(feature[0]) +";"
+  sql = "select clause from Features where id = "+ str(feature) +";"
   res = cursor.execute(sql)
   if res:
     return cursor.fetchone()[0]
   return -1
+
 
 def snippets(suggestions):
   snippets = []
@@ -47,27 +49,48 @@ def snippets(suggestions):
       snippets.append(cursor.fetchone()[0])
   return snippets
 
-partial_query = "SELECT * FROM actor;"
-t = ParsedQuery(partial_query)
-#print t.query_string
-features = find_feature_ids(t.features)
-#print features
+def snippet(suggestion):
+  snippet = ""
+  sql = "select feature_description from Features where id =" + str(suggestion) +";"
+  res = cursor.execute(sql)
+  if res:
+    return cursor.fetchone()[0]
+  else:
+    return ""
+
+def get_suggestions(features, clause_requested, k ):
+  #print features, clause_requested, k
+  i = len(features)
+  suggestions = []
+  while len(suggestions) < k and i > 0:
+    candidates = ssaccuracy(i, features)
+    for f in candidates:
+      if f[0] not in set(suggestions) and clause(f[0]) == clause_requested:
+        suggestions.append(int(f[0]))
+    i = i - 1
+  return suggestions
 
 
-
-i = len(features)
+fname = "exclude/generated_sql"
 k = 5
-suggestions = []
-clause_requested =3
-while len(suggestions) < k and i > 0:
-  candidates = ssaccuracy(i, features)
-  for f in candidates:
-    if f not in set(suggestions) and clause(f) == clause_requested:
-      suggestions.append(f)
-  i = i - 1
-#print suggestions
-sugg = snippets(suggestions)
-print partial_query
-for s in sugg[:k]:
-  print s
+num = 0
+i = 0
+for partial_query in open(fname, "r"):
+#  partial_query = "SELECT actor.first_name FROM actor, agent WHERE agent.id = 1;"
+  t = ParsedQuery(partial_query)
+  features = find_feature_ids(t.features)
+  index = randint(0, len(features)-1)
+  need = features[index]
+  #print need
+  #print snippet(need)
+  features.remove(need)
+  sugg = get_suggestions(features, clause(need), k)
+  #print sugg[:k]
+  #print need
+  if int(need) in set(sugg[:k]):
+    num = num + 1
+  i = i + 1
+  if i % 10 == 0:
+    print i, num
 
+print num 
