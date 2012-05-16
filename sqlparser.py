@@ -62,8 +62,10 @@ bind_parameter = (
     Combine(oneOf(": @ $") + parameter_name)
     )
 type_name = oneOf("TEXT REAL INTEGER BLOB NULL")
+function_literal_value = ( numeric_literal | string_literal | blob_literal | NULL | CURRENT_TIME | CURRENT_DATE | CURRENT_TIMESTAMP )
+function_literal_value.setParseAction( replaceWith("#") )
 
-table_valued_function = (Group(database_name("database") + "." + function_name) | function_name) + LPAR + Group(Optional(delimitedList(literal_value))) + RPAR 
+table_valued_function = (Group(database_name("database") + "." + function_name) | function_name) + LPAR + Group(Optional(delimitedList(function_literal_value))) + RPAR 
 user_defined_function = (function_name | ISNULL | NULL) + LPAR + Group(Optional(delimitedList(column_name | literal_value))) + RPAR 
 aggregate_function = aggregate_function_name + LPAR + ("*" | column_name) + RPAR 
 #aggregate_function = (aggregate_function_name | ISNULL | NULL) + LPAR + ("*" | column_name) + RPAR 
@@ -199,7 +201,11 @@ class ParsedQuery:
       #self.columns.append(term.column)
 
     for term in self.result.tables:
-      feature = (term.table, FROM_CLAUSE)
+      if term.table:
+        feature = (term.table, FROM_CLAUSE)
+      else:
+        temp_str = term.table_function[0] + "(" + ",".join(term.table_function[1]) + ")"
+        feature = (temp_str, FROM_CLAUSE)
       self.features.append(feature)
       #self.tables.append(term.table)
 
@@ -222,6 +228,7 @@ class ParsedQuery:
     print self.result.dump()
 
   def normalize_table_aliases(self):
+    #print self.table_aliases
     for term in self.result.where_terms:
       for i in range(len(term)):
         if term[i].split(".")[0] in self.table_aliases:
@@ -253,7 +260,10 @@ class ParsedQuery:
   def get_table_alias(self):
     for t in self.result.tables :
       if t.table_alias:
-        self.table_aliases[t.table_alias[0]] = t.table
+        if t.table:
+          self.table_aliases[t.table_alias[0]] = t.table
+        else:
+          self.table_aliases[t.table_alias[0]] = t.table_function[0] + " ()"
 
   def get_column_alias(self):
     for c in self.result.columns :

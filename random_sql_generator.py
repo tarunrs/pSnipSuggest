@@ -74,7 +74,8 @@ def get_where(tables):
 
   for c in choices:
     term = ""
-
+    if proceed(0.5):
+      continue
     if c[1] == 'string':
       term = c[0] + " = " + "\'abcdef\'"
     elif c[1] == 'real':
@@ -91,29 +92,72 @@ def get_where(tables):
         term = c[0] + " " + comp_op[randint(0,5)] + " 123"
     selected.append(term)
 
-    if not proceed(0.9):
+    if proceed(0.8):
       return selected
   return selected
+
+def get_order_by(tables):
+  choices = []
+  selected = []
+  for t in tables:
+   for c in db_config[t]:
+     choices.append(c)
+  for c in choices:
+    if proceed(0.2):
+      selected.append(c[0])
+    if proceed(0.5):
+      break
+  if len(selected) == 0:
+    return ""
+  return selected
+
+def get_group_by(tables):
+  choices = []
+  selected = []
+  for t in tables:
+   for c in db_config[t]:
+     choices.append(c)
+  for c in choices:
+    if proceed(0.2):
+      selected.append(c[0])
+    if proceed(0.5):
+      break
+
+  if len(selected) == 0:
+    return ""
+  return selected
+
 
 def generate_sql():
   sql_tables = get_tables()
   sql_columns = get_columns(sql_tables)
+
   sql_where = get_where(sql_tables)
   sql_conj = [conj_op[randint(0,1)] for i in range(len(sql_where))]
   sql_where_clause = ""
+  sql_group_by_clause = get_group_by(sql_tables)
+  sql_order_by_clause = get_order_by(sql_tables)
   if len(sql_where) > 1:
     for i in range(len(sql_where) - 1):
       sql_where_clause = sql_where_clause + " " + sql_where[i] + " " + sql_conj[i]
     sql_where_clause = sql_where_clause + " " + sql_where[-1]
 
   if len(sql_where_clause) > 0:
-    sql = "SELECT " + ", ".join(sql_columns) + " FROM " + ", ".join(sql_tables) + " WHERE" + sql_where_clause + " ;"
+    sql = "SELECT " + ", ".join(sql_columns) + " FROM " + ", ".join(sql_tables) + " WHERE" + sql_where_clause
   else:
-    sql = "SELECT " + ", ".join(sql_columns) + " FROM " + ", ".join(sql_tables) + " ;"
+    sql = "SELECT " + ", ".join(sql_columns) + " FROM " + ", ".join(sql_tables)
+  if len(sql_group_by_clause) > 0:
+    sql = sql + " GROUP BY " + ", ".join(sql_group_by_clause)
+
+  if len(sql_order_by_clause) > 0:
+    sql = sql + " ORDER BY " + ", ".join(sql_order_by_clause)
+
+  sql = sql + ";"
+
   return sql
 
 
-fname = "generated_sql"
+fname = "exclude/generated_sql"
 f = open(fname, "w")
 for i in range(10000):
   f.write(generate_sql() +" \n")

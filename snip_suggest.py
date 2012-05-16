@@ -23,6 +23,24 @@ def find_feature_ids(features):
       fids.append(str(int(cursor.fetchone()[0])))
   return fids
 
+def find_feature_ids_with_clauses(features):
+  fids = []
+  for f in features:
+    sql = "select id from Features where feature_description = '"+ f[0] +"' AND clause = "+ str(f[1]) +";"
+    res = cursor.execute(sql)
+    if res:
+      # feature is present, retrieve fid
+      fids.append((str(int(cursor.fetchone()[0])), f[1]))
+  return fids
+
+
+def find_feature_clauses(features):
+  clauses = []
+  for f in features:
+    clauses.append(f[1])
+  return clauses
+
+
 def ssaccuracy(m, features):
   sql = "select qf.feature_id from QueryFeatures qf, (SELECT query_id from QueryFeatures where feature_id in ("+ ",".join(features) +") group by query_id having count(feature_id) = " + str(m)+") as sq where qf.query_id = sq.query_id AND qf.feature_id NOT IN ("+ ",".join(features) +") group by qf.feature_id order by count(sq.query_id) DESC;"
   #print sql
@@ -71,26 +89,4 @@ def get_suggestions(features, clause_requested, k ):
   return suggestions
 
 
-fname = "exclude/generated_sql"
-k = 5
-num = 0
-i = 0
-for partial_query in open(fname, "r"):
-#  partial_query = "SELECT actor.first_name FROM actor, agent WHERE agent.id = 1;"
-  t = ParsedQuery(partial_query)
-  features = find_feature_ids(t.features)
-  index = randint(0, len(features)-1)
-  need = features[index]
-  #print need
-  #print snippet(need)
-  features.remove(need)
-  sugg = get_suggestions(features, clause(need), k)
-  #print sugg[:k]
-  #print need
-  if int(need) in set(sugg[:k]):
-    num = num + 1
-  i = i + 1
-  if i % 10 == 0:
-    print i, num
 
-print num 

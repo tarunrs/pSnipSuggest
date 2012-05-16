@@ -29,7 +29,7 @@ def check_and_insert(q, cursor):
 db=MySQLdb.connect(host=DATABASE_HOST,user=DATABASE_USER, passwd=DATABASE_PASSWD, db=DATABASE_NAME, port=int(DATABASE_PORT))
 cursor = db.cursor()
 
-fname = "generated_sql"
+fname = "exclude/train"
 for q in open(fname, "r"):
   t = ParsedQuery(q)
   check_and_insert(t, cursor)
