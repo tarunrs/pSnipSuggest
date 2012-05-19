@@ -12,9 +12,9 @@ select_stmt = Forward().setName("select statement")
 # keywords
 (UNION, ALL, AND, INTERSECT, EXCEPT, COLLATE, ASC, DESC, ON, USING, NATURAL, INNER, 
  CROSS, LEFT, OUTER, JOIN, AS, INDEXED, NOT, SELECT, DISTINCT, FROM, WHERE, GROUP, BY,
- HAVING, ORDER, BY, LIMIT, OFFSET) =  map(CaselessKeyword, """UNION, ALL, AND, INTERSECT, 
+ HAVING, ORDER, BY, LIMIT, TOP, OFFSET) =  map(CaselessKeyword, """UNION, ALL, AND, INTERSECT, 
  EXCEPT, COLLATE, ASC, DESC, ON, USING, NATURAL, INNER, CROSS, LEFT, OUTER, JOIN, AS, INDEXED, NOT, SELECT, 
- DISTINCT, FROM, WHERE, GROUP, BY, HAVING, ORDER, BY, LIMIT, OFFSET""".replace(",","").split())
+ DISTINCT, FROM, WHERE, GROUP, BY, HAVING, ORDER, BY, LIMIT, TOP, OFFSET""".replace(",","").split())
 (CAST, ISNULL, NOTNULL, NULL, IS, BETWEEN, ELSE, END, CASE, WHEN, THEN, EXISTS,
  COLLATE, IN, LIKE, GLOB, REGEXP, MATCH, ESCAPE, CURRENT_TIME, CURRENT_DATE, 
  CURRENT_TIMESTAMP) = map(CaselessKeyword, """CAST, ISNULL, NOTNULL, NULL, IS, BETWEEN, ELSE, 
@@ -22,7 +22,7 @@ select_stmt = Forward().setName("select statement")
  CURRENT_TIME, CURRENT_DATE, CURRENT_TIMESTAMP""".replace(",","").split())
 keyword = MatchFirst((UNION, ALL, INTERSECT, EXCEPT, COLLATE, ASC, DESC, ON, USING, NATURAL, INNER, 
  CROSS, LEFT, OUTER, JOIN, AS, INDEXED, NOT, SELECT, DISTINCT, FROM, WHERE, GROUP, BY,
- HAVING, ORDER, BY, LIMIT, OFFSET, CAST, ISNULL, NOTNULL, NULL, IS, BETWEEN, ELSE, END, CASE, WHEN, THEN, EXISTS,
+ HAVING, ORDER, BY, LIMIT, TOP, OFFSET, CAST, ISNULL, NOTNULL, NULL, IS, BETWEEN, ELSE, END, CASE, WHEN, THEN, EXISTS,
  COLLATE, IN, LIKE, GLOB, REGEXP, MATCH, ESCAPE, CURRENT_TIME, CURRENT_DATE, 
  CURRENT_TIMESTAMP))
  
@@ -65,7 +65,7 @@ type_name = oneOf("TEXT REAL INTEGER BLOB NULL")
 function_literal_value = ( numeric_literal | string_literal | blob_literal | NULL | CURRENT_TIME | CURRENT_DATE | CURRENT_TIMESTAMP )
 function_literal_value.setParseAction( replaceWith("#") )
 
-table_valued_function = (Group(database_name("database") + "." + function_name) | function_name) + LPAR + Group(Optional(delimitedList(function_literal_value))) + RPAR 
+table_valued_function = function_name + LPAR + Group(Optional(delimitedList(function_literal_value))) + RPAR 
 user_defined_function = (function_name | ISNULL | NULL) + LPAR + Group(Optional(delimitedList(column_name | literal_value))) + RPAR 
 aggregate_function = aggregate_function_name + LPAR + ("*" | column_name) + RPAR 
 #aggregate_function = (aggregate_function_name | ISNULL | NULL) + LPAR + ("*" | column_name) + RPAR 
@@ -129,7 +129,7 @@ join_constraint = Optional(ON + expr | USING + LPAR + Group(delimitedList(column
 join_op = COMMA | (Optional(NATURAL) + Optional(INNER | CROSS | LEFT + OUTER | LEFT | OUTER) + JOIN)
 
 join_source = Forward()
-single_source = ( Group((Group(database_name("database") + "." + table_name("table"))| table_valued_function("table_function") | table_name("table")) + 
+single_source = ( Group ( ( (Suppress( Optional ( database_name ("database") + ".") ) + table_valued_function("table_function")) | table_name("table")) + 
                     Optional(Suppress(Optional(AS)) + table_alias("table_alias"))) +
                     Optional(INDEXED + BY + index_name("name") | NOT + INDEXED)("index") |  
                   (LPAR + select_stmt + RPAR + Optional(Optional(AS) + table_alias)) | 
@@ -138,13 +138,13 @@ single_source = ( Group((Group(database_name("database") + "." + table_name("tab
 join_source << single_source + ZeroOrMore(join_op + single_source + join_constraint)
 
 result_column = Group(aggregate_function + Optional(Suppress(Optional(AS)) + column_alias("aggregate_function_alias")) | 
-			user_defined_function + Optional(Suppress(Optional(AS)) + column_alias("user_function_alias")) |
+			 user_defined_function + Optional(Suppress(Optional(AS)) + column_alias("user_function_alias")) |
 		 column_name("column") + Optional(Suppress(Optional(AS)) + column_alias("column_alias")) 
 		|"*"
 		| table_name + "." + "*"
 		|(expr + Optional(Optional(AS) + column_alias("column_alias")))
 		)
-select_core = (SELECT + Optional(DISTINCT | ALL) + Group(delimitedList(result_column))("columns") +
+select_core = (SELECT + Suppress(Optional(TOP + intNum)) + Optional(DISTINCT | ALL) + Group(delimitedList(result_column))("columns") +
                 Optional(FROM + Group(delimitedList(join_source))("tables")) +
                 Optional(WHERE + whereExpression("where_terms")) +
                 Optional(GROUP + BY + Group(delimitedList(ordering_term))("group_by_terms")) + 
@@ -201,12 +201,14 @@ class ParsedQuery:
       #self.columns.append(term.column)
 
     for term in self.result.tables:
+
       if term.table:
         feature = (term.table, FROM_CLAUSE)
-      else:
+      elif term.table_function:
         temp_str = term.table_function[0] + "(" + ",".join(term.table_function[1]) + ")"
         feature = (temp_str, FROM_CLAUSE)
-      self.features.append(feature)
+      if feature:
+        self.features.append(feature)
       #self.tables.append(term.table)
 
     for term in self.result.where_terms:
