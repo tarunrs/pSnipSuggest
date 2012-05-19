@@ -23,6 +23,8 @@ def find_feature_ids(features):
       fids.append(str(int(cursor.fetchone()[0])))
   return fids
 
+
+
 def find_feature_ids_with_clauses(features):
   fids = []
   for f in features:
@@ -61,7 +63,7 @@ def clause (feature):
 def snippets(suggestions):
   snippets = []
   for s in suggestions:
-    sql = "select feature_description from Features where id =" + str(s[0]) +";"
+    sql = "select feature_description from Features where id =" + str(s) +";"
     res = cursor.execute(sql)
     if res:
       snippets.append(cursor.fetchone()[0])
