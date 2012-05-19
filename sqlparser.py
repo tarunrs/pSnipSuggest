@@ -124,7 +124,7 @@ compound_operator = (UNION + Optional(ALL) | INTERSECT | EXCEPT)
 
 ordering_term = Group(expr("name") + Optional(COLLATE + collation_name)("collate") + Optional(ASC | DESC)("order"))
 
-join_constraint = Optional(ON + expr | USING + LPAR + Group(delimitedList(column_name)) + RPAR)
+join_constraint = Optional(Suppress(ON) + expr | USING + LPAR + Group(delimitedList(column_name)) + RPAR)
 
 join_op = COMMA | (Optional(NATURAL) + Optional(INNER | CROSS | LEFT + OUTER | LEFT | OUTER) + JOIN)
 
@@ -135,7 +135,7 @@ single_source = ( Group ( ( (Suppress( Optional ( database_name ("database") + "
                   (LPAR + select_stmt + RPAR + Optional(Optional(AS) + table_alias)) | 
                   (LPAR + join_source + RPAR) )
 
-join_source << single_source + ZeroOrMore(join_op + single_source + join_constraint)
+join_source << single_source + ZeroOrMore(Suppress(join_op) + single_source + join_constraint)
 
 result_column = Group(aggregate_function + Optional(Suppress(Optional(AS)) + column_alias("aggregate_function_alias")) | 
 			 user_defined_function + Optional(Suppress(Optional(AS)) + column_alias("user_function_alias")) |
@@ -185,7 +185,9 @@ class ParsedQuery:
     self.features = []
     self.query_string = arg.replace( "'", '\\' + "'" ) # escape single quotes
     self.result = parse(arg)
+    self.dump()
     self.get_table_alias()
+    self.get_on_terms()
     self.normalize_table_aliases()
     self.get_column_alias()
     self.normalize_column_aliases()
@@ -201,20 +203,28 @@ class ParsedQuery:
       #self.columns.append(term.column)
 
     for term in self.result.tables:
-
+      #print term
+      feature = ""
       if term.table:
         feature = (term.table, FROM_CLAUSE)
+        
       elif term.table_function:
         temp_str = term.table_function[0] + "(" + ",".join(term.table_function[1]) + ")"
         feature = (temp_str, FROM_CLAUSE)
-      if feature:
+      if feature != "":
         self.features.append(feature)
+      
       #self.tables.append(term.table)
 
     for term in self.result.where_terms:
       feature = (" ".join(term), WHERE_CLAUSE)
       self.features.append(feature)
-      #self.where_terms.append(" ".join(term))
+    
+    if self.result.tables and self.result.tables.on_terms:
+      for term in self.result.tables.on_terms:
+        feature = (" ".join(term), WHERE_CLAUSE)
+        self.features.append(feature)
+        #self.where_terms.append(" ".join(term))
 
     for term in self.result.group_by_terms:
       feature = (" ".join(term), GROUPBY_CLAUSE)
@@ -261,11 +271,21 @@ class ParsedQuery:
 
   def get_table_alias(self):
     for t in self.result.tables :
+      #print t
       if t.table_alias:
         if t.table:
           self.table_aliases[t.table_alias[0]] = t.table
         else:
           self.table_aliases[t.table_alias[0]] = t.table_function[0] + " ()"
+  
+  def get_on_terms(self):
+    for t in self.result.tables :
+      if t.table or t.table_function:
+        continue
+      else:
+        feature = (" ".join(t), WHERE_CLAUSE)
+        self.features.append(feature)
+      
 
   def get_column_alias(self):
     for c in self.result.columns :
