@@ -8,10 +8,8 @@ DATABASE_NAME = "snipsuggest"
 DATABASE_PASSWD = "tarun123"
 DATABASE_PORT = 3306
 
-
 db=MySQLdb.connect(host=DATABASE_HOST,user=DATABASE_USER, passwd=DATABASE_PASSWD, db=DATABASE_NAME, port=int(DATABASE_PORT))
 cursor = db.cursor()
-
 
 def find_feature_ids(features):
   fids = []
@@ -23,16 +21,14 @@ def find_feature_ids(features):
       fids.append(str(int(cursor.fetchone()[0])))
   return fids
 
-
-
 def find_feature_ids_with_clauses(features):
   fids = []
   for f in features:
     sql = "select id from Features where feature_description = '"+ f[0] +"' AND clause = "+ str(f[1]) +";"
     res = cursor.execute(sql)
     if res:
-      # feature is present, retrieve fid
-      fids.append((str(int(cursor.fetchone()[0])), f[1]))
+      # feature is present, retrieve fid #feature_id, clause, feature_description
+      fids.append((str(int(cursor.fetchone()[0])), f[1], f[0]))
   return fids
 
 
@@ -45,7 +41,7 @@ def find_feature_clauses(features):
 
 def ssaccuracy(m, features):
   sql = "select qf.feature_id from QueryFeatures qf, (SELECT query_id from QueryFeatures where feature_id in ("+ ",".join(features) +") group by query_id having count(feature_id) = " + str(m)+") as sq where qf.query_id = sq.query_id AND qf.feature_id NOT IN ("+ ",".join(features) +") group by qf.feature_id order by count(sq.query_id) DESC;"
-  #print sql
+
   rows = []
   res = cursor.execute(sql)
   if res:
@@ -79,16 +75,28 @@ def snippet(suggestion):
     return ""
 
 def get_suggestions(features, clause_requested, k ):
-  #print features, clause_requested, k
   i = len(features)
   suggestions = []
   while len(suggestions) < k and i > 0:
     candidates = ssaccuracy(i, features)
     for f in candidates:
-      if f[0] not in set(suggestions) and clause(f[0]) == clause_requested:
+      if int(f[0]) not in set(suggestions) and clause(f[0]) == clause_requested:
         suggestions.append(int(f[0]))
     i = i - 1
   return suggestions
 
+def length_of_partial_query(features):
+  select_str = "SELECT "
+  from_str = "FROM "
+  where_str = "WHERE "
+  for f in features:
+    if f[1] == 1:
+      select_str = select_str + f[2] + " "
+    elif f[1] == 2:
+      from_str = from_str + f[2] + " "
+    elif f[1] == 3:
+      where_str = where_str + f[2] + " "
+  query_str = select_str + from_str + where_str
+  return len(query_str)
 
 

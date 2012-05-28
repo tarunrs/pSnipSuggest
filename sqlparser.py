@@ -179,7 +179,6 @@ class ParsedQuery:
     self.features = []
     self.query_string = arg.replace( "'", '\\' + "'" ) # escape single quotes
     self.result = parse(arg)
-    #self.dump()
     self.get_table_alias()
     self.normalize_table_aliases()
     self.get_on_terms()
@@ -190,7 +189,6 @@ class ParsedQuery:
   def populate_features(self):
     for term in self.result.columns:
       if term.func:
-        print term.func
         temp_str = term.func[0] + "(" + ",".join(term.func[1]) + ")"
         feature = (temp_str, SELECT_CLAUSE)
       elif len(term.column) == 0:
@@ -198,10 +196,8 @@ class ParsedQuery:
       else:
         feature = (term.column, SELECT_CLAUSE)
       self.features.append(feature)
-      #self.columns.append(term.column)
 
     for term in self.result.tables:
-      #print term
       feature = ""
       if term.table:
         feature = (term.table, FROM_CLAUSE)
@@ -211,8 +207,6 @@ class ParsedQuery:
         feature = (temp_str, FROM_CLAUSE)
       if feature != "":
         self.features.append(feature)
-      
-      #self.tables.append(term.table)
 
     for term in self.result.where_terms:
       feature = (" ".join(term), WHERE_CLAUSE)
@@ -222,29 +216,24 @@ class ParsedQuery:
       for term in self.result.tables.on_terms:
         feature = (" ".join(term), WHERE_CLAUSE)
         self.features.append(feature)
-        #self.where_terms.append(" ".join(term))
 
     for term in self.result.group_by_terms:
       feature = (" ".join(term), GROUPBY_CLAUSE)
       self.features.append(feature)
-      #self.group_by_terms.append(" ".join(term))
 
     for term in self.result.order_by_terms:
       feature = (" ".join(term), ORDERBY_CLAUSE)
       self.features.append(feature)
-      #self.order_by_terms.append(" ".join(term))
 
   def dump(self):
     print self.result.dump()
 
   def normalize_table_aliases(self):
-    #print self.table_aliases
     for term in self.result.where_terms:
       for i in range(len(term)):
         if term[i].split(".")[0] in self.table_aliases:
           term[i] = self.table_aliases[term[i].split(".")[0]] + "." + "".join(term[i].split(".")[1:])
 
-    #normalizing ON terms
     for term in self.result.tables :
       if term.table or term.table_function:
         continue
@@ -272,8 +261,6 @@ class ParsedQuery:
     for i in range(len(self.result.order_by_terms)):
       col = self.result.order_by_terms[i]
       temp = col[0].split(".")
-#      print temp
-#      print type(self.result.order_by_terms[i][0])
       if len(temp) == 3:
         #has db + tablename + columnname
         if temp[1] in self.table_aliases:
@@ -310,7 +297,6 @@ class ParsedQuery:
 
   def get_table_alias(self):
     for t in self.result.tables :
-      #print t
       if t.table_alias:
         if t.table:
           self.table_aliases[t.table_alias[0]] = t.table

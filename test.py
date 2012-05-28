@@ -1,94 +1,112 @@
 from sqlparser import ParsedQuery, SELECT_CLAUSE, FROM_CLAUSE, WHERE_CLAUSE, GROUPBY_CLAUSE, ORDERBY_CLAUSE, HAVING_CLAUSE 
 from random import *
-from snip_suggest import get_suggestions, find_feature_ids_with_clauses, clause, find_feature_ids, snippets
+from snip_suggest import *
+from evaluation import *
+from helper import *
+from time import clock, time
 
-def proceed(num=0.5):
-  if random() < num:
-    return True
-  return False
 
-def count_terms(features, clause):
-  num = 0
-  for f in features:
-    if f[1] == clause:
-      num =  num + 1
-  return num
+def calculate_results(k, total_precision, total_tpm, total_time, max_time, min_time, removed_features, partial_features, all_features, clause_to_remove):
+    if len(removed_features) == 0:
+      return 0
 
-def remove_features(all_features, clause, num_to_remove):
-  removed_features = []
-  for f in all_features:
-    if f[1] == clause:
-      removed_features.append(f)
-      all_features.remove(f)
-  return removed_features
+    if len(partial_features) == 0 :
+      print partial_features
+      print all_features
+      print removed_features
+      return 0
 
-def rel (features_required, features_suggested, i):
-  if str(features_suggested[i]) in features_required:
+    f1, c1, d1 = zip(*partial_features)
+    nf, nc, nd = zip(*removed_features)
+
+    start_time =  time()
+    sugg = get_suggestions(f1, clause_to_remove, k)
+    end_time = time()
+    elapsed_time = end_time - start_time
+    if len(sugg) < k:
+      ap = average_precision(nf, sugg, len(sugg))
+      tpm =  TPM (nf, sugg, snippets(nf), snippets(sugg),  len(sugg), length_of_partial_query(partial_features))
+    else: 
+      ap = average_precision(nf, sugg[:k], k)
+      tpm =  TPM (nf, sugg, snippets(nf), snippets(sugg),  k, length_of_partial_query(partial_features))
+    total_precision[k] = total_precision[k] + ap
+    total_tpm[k] = total_tpm[k] + tpm
+    total_time[k] = total_time[k] + elapsed_time
+
+    if elapsed_time > max_time[k]:
+      max_time[k] = elapsed_time
+    if elapsed_time < min_time[k]:
+      min_time[k] = elapsed_time
     return 1
-  else:
-    return 0
 
-def precision(features_required, features_suggested, k):
-   sum = 0.0
-   for i in range(k+1):
-     sum = sum + rel(features_required, features_suggested, i)
-   return sum / float(k+1)
-  
-def average_precision(features_required, features_suggested, k):
-  sum= 0.0 
-  for i in range(k):
-    sum = sum + (precision(features_required, features_suggested, i) * rel(features_required, features_suggested, i))
-   # print sum
-  return sum / float(len(features_required))
+def test_case_1(k, total_precision, total_tpm, total_time, max_time, min_time):
+  fname = "exclude/queries.from0"
+  i = 0
+  for full_query in open(fname, "r"):
+    clause_to_remove = FROM_CLAUSE
+    t = ParsedQuery(full_query)
+    all_features = find_feature_ids_with_clauses(t.features)
+    removed_features = remove_features(all_features, clause_to_remove, -1)
+    partial_features = list(set(all_features) - set(removed_features))
+    res = calculate_results(k, total_precision, total_tpm, total_time, max_time, min_time, removed_features, partial_features, all_features, clause_to_remove)
+    i = i + res
+    if i == 100:
+      return i
+  return i
 
-fname = "exclude/test"
-k = 10
-num = 0
+def test_case_4(k, total_precision, total_tpm, total_time, max_time, min_time):
+  fname = "exclude/queries.where0"
+  i = 0
+  for full_query in open(fname, "r"):
+    clause_to_remove = WHERE_CLAUSE
+    t = ParsedQuery(full_query)
+    all_features = find_feature_ids_with_clauses(t.features)
+    removed_features = remove_features(all_features, clause_to_remove, -1)
+    partial_features = list(set(all_features) - set(removed_features))
+    res = calculate_results(k, total_precision, total_tpm, total_time, max_time, min_time, removed_features, partial_features, all_features, clause_to_remove)
+    i = i + res
+  return i
+
+def test_case_5(k, total_precision, total_tpm, total_time, max_time, min_time):
+  fname = "exclude/queries.where1"
+  i = 0
+  for full_query in open(fname, "r"):
+    clause_to_remove = WHERE_CLAUSE
+    t = ParsedQuery(full_query)
+    all_features = find_feature_ids_with_clauses(t.features)
+    removed_features = remove_features(all_features, clause_to_remove, -1)
+    partial_features = list(set(all_features) - set(removed_features))
+    res = calculate_results(k, total_precision, total_tpm, total_time, max_time, min_time, removed_features, partial_features, all_features, clause_to_remove)
+    i = i + res
+  return i
+
+
+def dump_results (file_name, k, i, total_precision, total_tpm, total_time, max_time, min_time):
+  op_file = open(file_name, "w")
+  temp_str = "k\ti\tAveragePrecision\tAverageTPM\tTotalTime\tAverageTime\tMinimumTime\tMaximumTime\n"
+  op_file.write(temp_str)
+  for n in range(k):
+    temp_str = str(k) + "\t" +str(i) + "\t" +str(total_precision[k]/i) + "\t" +str(total_tpm[k]/i) + "\t" +str(total_time[k]) + "\t" +str(total_time[k]/i) + "\t" +str(min_time[k]) + "\t" +str(max_time[k]) + "\n"
+    op_file.write(temp_str)
+
+total_precision = [0.0 for i in range (11)]
+total_tpm = [0.0 for i in range (11)]
+total_time = [0.0 for i in range (11)]
+max_time = [0.0 for i in range (11)]
+min_time = [10000000.0 for i in range (11)]
+
+
 i = 0
-total_precision = 0.0
-
-#que = "SELECT  top 1   p.objID, p.run, p.rerun, p.camcol, p.field, p.obj,    p.type, p.ra, p.dec, p.u,p.g,p.r,p.i,p.z,    p.Err_u, p.Err_g, p.Err_r,p.Err_i,p.Err_z    FROM fGetNearbyObjEq(195,2.5,0.5) n, PhotoPrimary p    WHERE n.objID=p.objID ; "
-#que = "select top 5000 p.objid,p.ra,p.dec,u, g, r, i, z, Err_u, Err_g, Err_r, Err_i, Err_z, psfMag_u, psfMagErr_u, psfMag_g, psfMagErr_g, psfMag_r, psfMagErr_r, psfMag_i, psfMagErr_i, psfMag_z, psfMagErr_z,  func1('1') asass from PhotoPrimary p, db.fGetNearbyObjEq(1,2) n  where p.objId = n.objId AND unfctio() > 0"
-
-#que = "SELECT * from table1 join table2 on id = id2 join table3 on id3=id2 where a = b;"
-#que = "SELECT p.objID,str(p.ra,13,8) as ra,str(p.dec,13,8) as dec,p.u,p.err_u,p.g,p.err_g,p.r,p.err_r,p.i,p.err_i,p.z,p.err_z,p.type,ISNULL(s.mjd,0) as mjd,ISNULL(s.z,0) as z,ISNULL(s.zErr,0) as zErr,ISNULL(s.zConf,0) as zConf,ISNULL(s.zWarning,0) as zWarning,ISNULL(s.specClass,0) as specClass FROM dbo.fGetNearbyObjEq(322.336871, 11.493331,10) as b, BESTDR5.PhotoObj as p LEFT OUTER JOIN BESTDR5.SpecObj s ON p.objID = s.bestObjID WHERE b.objID = p.objID"
-
-que = "SELECT * FROM actor as a, movie as m where a.id = 123;"
-t = ParsedQuery(que)
-print "\n"
-t.dump()
-#print t.result.user_function_alias
-print t.features
-print "\n"
-features = find_feature_ids(t.features)
-print features
-sugg = get_suggestions(features, WHERE_CLAUSE, 10)
-print sugg[:k]
-s = sugg[:k]
-print snippets(s)
-#temp = average_precision(nf, sugg[:k], k)
-
-exit()
-for full_query in open(fname, "r"):
-
-  t = ParsedQuery(full_query)
-  features = find_feature_ids_with_clauses(t.features)
-  num_predicates = count_terms(t.features, WHERE_CLAUSE)
-  removed_features = remove_features(features, WHERE_CLAUSE, -1)
-  #print removed_features
-  if len(removed_features) == 0:
-    continue
-  i = i + 1
-  print i
-  f1, c1 = zip(*features)
-  nf, nc = zip(*removed_features)
-  sugg = get_suggestions(f1, WHERE_CLAUSE, k)
-  temp = average_precision(nf, sugg[:k], k)
-  total_precision = total_precision + temp
-  print num_predicates, temp, total_precision, i
-  print total_precision/ float(i)
-  if i == 100:
-    break
-
-print "Total average precision = " , total_precision / 100
+for k in range(5,6):
+  fname = "exclude/case1."+ str(k) + ".res"
+  i = test_case_1(k, total_precision, total_tpm, total_time, max_time, min_time)
+  print "\nFINAL\n",k, "\n"
+  print "Total average precision = " , total_precision[k] / i
+  print "Total TPM = " , total_tpm[k] / i
+  print "Total time", total_time[k]
+  print "Average time", total_time[k] / i
+  print "Minimin  time", min_time[k]
+  print "Maximum time", max_time[k]
+  dump_results (fname, k, i, total_precision, total_tpm, total_time, max_time, min_time)
+  
 
