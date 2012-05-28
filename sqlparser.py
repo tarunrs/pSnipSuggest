@@ -28,16 +28,10 @@ keyword = MatchFirst((UNION, ALL, INTERSECT, EXCEPT, COLLATE, ASC, DESC, ON, USI
  
 (AVG, MAX, BINARY_CHECKSUM, MIN, CHECKSUM, SUM, CHECKSUM_AGG, STDEV, COUNT, STDEVP, COUNT_BIG, VAR, GROUPING, VARP) = map(CaselessKeyword, """AVG, MAX, BINARY_CHECKSUM, MIN, CHECKSUM, SUM, CHECKSUM_AGG, 
 	STDEV, COUNT, STDEVP, COUNT_BIG, VAR, GROUPING, VARP""".replace(",","").split())
-aggregate_function_name = AVG | MAX | BINARY_CHECKSUM | MIN | CHECKSUM | SUM | CHECKSUM_AGG | STDEV | COUNT | STDEVP | COUNT_BIG | VAR | GROUPING | VARP
-identifier = ~keyword + Word(alphas, alphanums+"_")
-
-#columnName     = Upcase( delimitedList( identifier, ".", combine=True ) )
-#columnNameList = Group( delimitedList( columnName ) )
-#tableName      = Upcase( delimitedList( identifier, ".", combine=True ) )
-#tableNameList  = Group( delimitedList( tableName ) )
+aggregate_function_name = MatchFirst((AVG , MAX , BINARY_CHECKSUM, MIN , CHECKSUM , SUM , CHECKSUM_AGG , STDEV , COUNT, STDEVP , COUNT_BIG , VAR , GROUPING , VARP))
+identifier = ~keyword + Word(alphas, alphanums+"_-")
 
 collation_name = identifier.copy()
-#column_name = identifier.copy()
 column_name = delimitedList( identifier, ".", combine=True )
 columnNameList = Group( delimitedList( column_name ) )
 column_alias = identifier.copy()
@@ -52,7 +46,7 @@ database_name = identifier.copy()
 expr = Forward().setName("expression")
 
 integer = Regex(r"[+-]?\d+")
-numeric_literal = Regex(r"\d+(\.\d*)?([eE][+-]?\d+)?")
+numeric_literal = Regex(r"[-+]?\d+(\.\d*)?([eE][+-]?\d+)?")
 string_literal = QuotedString("'")
 blob_literal = Combine(oneOf("x X") + "'" + Word(hexnums) + "'")
 literal_value = ( numeric_literal | string_literal | blob_literal |
@@ -61,12 +55,12 @@ bind_parameter = (
     Word("?",nums) |
     Combine(oneOf(": @ $") + parameter_name)
     )
-type_name = oneOf("TEXT REAL INTEGER BLOB NULL")
-function_literal_value = ( numeric_literal | string_literal | blob_literal | NULL | CURRENT_TIME | CURRENT_DATE | CURRENT_TIMESTAMP )
+type_name = oneOf("TEXT REAL INTEGER BLOB NULL VARCHAR")
+function_literal_value = ( column_name | numeric_literal | string_literal | blob_literal | NULL | CURRENT_TIME | CURRENT_DATE | CURRENT_TIMESTAMP )
 function_literal_value.setParseAction( replaceWith("#") )
 
-table_valued_function = function_name + LPAR + Group(Optional(delimitedList(function_literal_value))) + RPAR 
-user_defined_function = (function_name | ISNULL | NULL) + LPAR + Group(Optional(delimitedList(column_name | literal_value))) + RPAR 
+table_valued_function = Suppress(Optional(database_name + ".")) + function_name + LPAR + Group(Optional(delimitedList(function_literal_value))) + RPAR 
+user_defined_function = Suppress(Optional(database_name + ".")) + (function_name | ISNULL | NULL) + LPAR + Group(Optional(delimitedList(function_literal_value))) + RPAR 
 aggregate_function = aggregate_function_name + LPAR + ("*" | column_name) + RPAR 
 #aggregate_function = (aggregate_function_name | ISNULL | NULL) + LPAR + ("*" | column_name) + RPAR 
 
@@ -77,7 +71,7 @@ or_ = Keyword("or", caseless=True)
 in_ = Keyword("in", caseless=True)
 
 E = CaselessLiteral("E")
-binop = oneOf("= != < > >= <= eq ne lt le gt ge", caseless=True)
+binop = oneOf("= != < > >= <= & eq ne lt le gt ge like", caseless=True)
 arithSign = Word("+-",exact=1)
 realNum = Combine( Optional(arithSign) + ( Word( nums ) + "." + Optional( Word(nums) )  |
                                                          ( "." + Word(nums) ) ) + 
@@ -95,7 +89,7 @@ whereCondition = Group(
     ( column_name + in_ + "(" + delimitedList( columnRval ) + ")" ) |
     ( "(" + whereExpression + ")" )
     )
-whereExpression << whereCondition + ZeroOrMore( Suppress( and_ | or_ ) + whereExpression ) 
+whereExpression << Suppress(Optional(LPAR)) + whereCondition + Suppress(Optional(RPAR))  + ZeroOrMore( Suppress( and_ | or_ ) + Suppress(Optional(LPAR)) + whereExpression + Suppress(Optional(RPAR))) 
 
 expr_term = (
     CAST + LPAR + expr + AS + type_name + RPAR |
@@ -129,7 +123,7 @@ join_constraint = Optional(Suppress(ON) + expr | USING + LPAR + Group(delimitedL
 join_op = COMMA | (Optional(NATURAL) + Optional(INNER | CROSS | LEFT + OUTER | LEFT | OUTER) + JOIN)
 
 join_source = Forward()
-single_source = ( Group ( ( (Suppress( Optional ( database_name ("database") + ".") ) + table_valued_function("table_function")) | table_name("table")) + 
+single_source = ( Group ( (  table_valued_function("table_function") | table_name("table")) + 
                     Optional(Suppress(Optional(AS)) + table_alias("table_alias"))) +
                     Optional(INDEXED + BY + index_name("name") | NOT + INDEXED)("index") |  
                   (LPAR + select_stmt + RPAR + Optional(Optional(AS) + table_alias)) | 
@@ -137,14 +131,14 @@ single_source = ( Group ( ( (Suppress( Optional ( database_name ("database") + "
 
 join_source << single_source + ZeroOrMore(Suppress(join_op) + single_source + join_constraint)
 
-result_column = Group(aggregate_function + Optional(Suppress(Optional(AS)) + column_alias("aggregate_function_alias")) | 
-			 user_defined_function + Optional(Suppress(Optional(AS)) + column_alias("user_function_alias")) |
+result_column = Group(aggregate_function("func") + Optional(Suppress(Optional(AS)) + column_alias("aggregate_function_alias")) | 
+			 user_defined_function("func") + Optional(Suppress(Optional(AS)) + column_alias("user_function_alias")) |
 		 column_name("column") + Optional(Suppress(Optional(AS)) + column_alias("column_alias")) 
 		|"*"
 		| table_name + "." + "*"
 		|(expr + Optional(Optional(AS) + column_alias("column_alias")))
 		)
-select_core = (SELECT + Suppress(Optional(TOP + intNum)) + Optional(DISTINCT | ALL) + Group(delimitedList(result_column))("columns") +
+select_core = (SELECT + Suppress(Optional(TOP + intNum)) + Suppress(Optional(DISTINCT | ALL)) + Group(delimitedList(result_column))("columns") +
                 Optional(FROM + Group(delimitedList(join_source))("tables")) +
                 Optional(WHERE + whereExpression("where_terms")) +
                 Optional(GROUP + BY + Group(delimitedList(ordering_term))("group_by_terms")) + 
@@ -185,17 +179,21 @@ class ParsedQuery:
     self.features = []
     self.query_string = arg.replace( "'", '\\' + "'" ) # escape single quotes
     self.result = parse(arg)
-    self.dump()
+    #self.dump()
     self.get_table_alias()
-    self.get_on_terms()
     self.normalize_table_aliases()
+    self.get_on_terms()
     self.get_column_alias()
     self.normalize_column_aliases()
     self.populate_features()
   
   def populate_features(self):
     for term in self.result.columns:
-      if len(term.column) == 0:
+      if term.func:
+        print term.func
+        temp_str = term.func[0] + "(" + ",".join(term.func[1]) + ")"
+        feature = (temp_str, SELECT_CLAUSE)
+      elif len(term.column) == 0:
         feature = (term[0], SELECT_CLAUSE)
       else:
         feature = (term.column, SELECT_CLAUSE)
@@ -245,6 +243,17 @@ class ParsedQuery:
       for i in range(len(term)):
         if term[i].split(".")[0] in self.table_aliases:
           term[i] = self.table_aliases[term[i].split(".")[0]] + "." + "".join(term[i].split(".")[1:])
+
+    #normalizing ON terms
+    for term in self.result.tables :
+      if term.table or term.table_function:
+        continue
+      else:
+        for i in range(len(term)):  
+          if term[i].split(".")[0] in self.table_aliases:
+            term[i] = self.table_aliases[term[i].split(".")[0]] + "." + "".join(term[i].split(".")[1:])     
+      
+
     for i in range(len(self.result.columns)):
       col = self.result.columns[i]
       temp = col.column.split(".")
@@ -259,6 +268,36 @@ class ParsedQuery:
         if temp[0] in self.table_aliases:
           self.result.columns[i].column = self.table_aliases[temp[0]] + "." + temp[1]
           self.result.columns[i][0] = self.table_aliases[temp[0]] + "." + temp[1]
+    #normalizing order by clauses
+    for i in range(len(self.result.order_by_terms)):
+      col = self.result.order_by_terms[i]
+      temp = col[0].split(".")
+#      print temp
+#      print type(self.result.order_by_terms[i][0])
+      if len(temp) == 3:
+        #has db + tablename + columnname
+        if temp[1] in self.table_aliases:
+          self.result.order_by_terms[i][0] = temp[0] + "." + self.table_aliases[temp[1]] + "." + temp[2]
+
+      elif len(temp) == 2:
+	#has tablename + columnname
+        if temp[0] in self.table_aliases:
+          self.result.order_by_terms[i][0] = self.table_aliases[temp[0]] + "." + temp[1]
+
+    #normalizing group by clauses
+    for i in range(len(self.result.group_by_terms)):
+      col = self.result.group_by_terms[i]
+      temp = col[0].split(".")
+      if len(temp) == 3:
+        #has db + tablename + columnname
+        if temp[1] in self.table_aliases:
+          self.result.group_by_terms[i][0] = temp[0] + "." + self.table_aliases[temp[1]] + "." + temp[2]
+
+      elif len(temp) == 2:
+	#has tablename + columnname
+        if temp[0] in self.table_aliases:
+          self.result.group_by_terms[i][0] = self.table_aliases[temp[0]] + "." + temp[1]
+
 
   def normalize_column_aliases(self):
     # handle column aliases in orderby groupby and having clauses
