@@ -1,3 +1,6 @@
+# Helper funtions for Evaluation
+# Author: Tarun Sasikumar, 2012, sasikuma@cse.ohio-state.edu
+
 def proceed(num=0.5):
   if random() < num:
     return True
@@ -15,6 +18,18 @@ def remove_features(all_features, clause, num_to_remove):
   for f in all_features:
     if f[1] == clause:
       removed_features.append(f)
+    if num_to_remove != -1 and len(removed_features) == num_to_remove:
+      break
+  return removed_features
+
+def remove_features_keeping(all_features, clause, num_to_keep):
+  removed_features = remove_features(all_features, clause, -1)
+  num_kept = 0
+  for f in removed_features:
+    removed_features.remove(f)
+    num_kept = num_kept + 1
+    if num_kept == num_to_keep:
+      break
   return removed_features
 
 def rel (features_required, features_suggested, i):

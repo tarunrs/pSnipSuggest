@@ -1,3 +1,6 @@
+# The main Query Logger. Parses the Query and Inserts it into the Database
+# Author: Tarun Sasikumar, 2012, sasikuma@cse.ohio-state.edu
+
 from sqlparser import ParsedQuery
 from time import time
 import MySQLdb
@@ -36,23 +39,17 @@ def check_and_insert(q, cursor):
 db=MySQLdb.connect(host=DATABASE_HOST,user=DATABASE_USER, passwd=DATABASE_PASSWD, db=DATABASE_NAME, port=int(DATABASE_PORT))
 cursor = db.cursor()
 
-fname = "exclude/queries.train2"
-inserted_file = open("exclude/queries.inserted", "a")
+fname = "exclude/queries.eliminated"
+inserted_file = open("exclude/queries-eliminated.inserted", "a")
 start_time = time()
 print "start_time ", start_time
 for line in open(fname, "r"):
-  if line.find("[") != -1 or line.find("WITH") != -1 or line.find("<a") != -1 or line.find("cast") != -1 or line.find("CREATE") != -1 or line.find("create") != -1 or line.find("INSERT") != -1 or line.find("insert") != -1 or line.find("&") != -1 or line.find("0x") != -1 or line.find("#") != -1 or line.find("varchar") != -1 or line.find("+") != -1 or line.find("^") != -1 or line.find("--") != -1 or line.find("||") != -1 or line.find("between") != -1 or line.find("BETWEEN") != -1 or line.find("INTO") != -1:
-    continue
   try:
     t = ParsedQuery(line)
-    print line[:-1]
-    print str(t.features) + "\n"
     if check_and_insert(t, cursor) == 1:
       inserted_file.write(line)
-    else:
-      print "NOT INSERTED"
   except:
-    print "NOT INSERTED"
+    print "Error trying to Parse the query!"
 db.commit()
 end_time = time()
 print "end_time ", end_time

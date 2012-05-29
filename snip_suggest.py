@@ -1,3 +1,7 @@
+# Main SnipSuggest functions for getting Snippets of Suggestions based on Partial Query
+# Author: Tarun Sasikumar, 2012, sasikuma@cse.ohio-state.edu
+
+
 from sqlparser import ParsedQuery
 from random import *
 import MySQLdb
@@ -40,7 +44,10 @@ def find_feature_clauses(features):
 
 
 def ssaccuracy(m, features):
-  sql = "select qf.feature_id from QueryFeatures qf, (SELECT query_id from QueryFeatures where feature_id in ("+ ",".join(features) +") group by query_id having count(feature_id) = " + str(m)+") as sq where qf.query_id = sq.query_id AND qf.feature_id NOT IN ("+ ",".join(features) +") group by qf.feature_id order by count(sq.query_id) DESC;"
+  if len(features) > 0:
+    sql = "select qf.feature_id from QueryFeatures qf, (SELECT query_id from QueryFeatures where feature_id in ("+ ",".join(features) +") group by query_id having count(feature_id) = " + str(m)+") as sq where qf.query_id = sq.query_id AND qf.feature_id NOT IN ("+ ",".join(features) +") group by qf.feature_id order by count(sq.query_id) DESC;"
+  else:
+    sql = "select qf.feature_id from QueryFeatures qf, (SELECT query_id from QueryFeatures group by query_id) as sq where qf.query_id = sq.query_id group by qf.feature_id order by count(sq.query_id) DESC;"
 
   rows = []
   res = cursor.execute(sql)
@@ -77,7 +84,7 @@ def snippet(suggestion):
 def get_suggestions(features, clause_requested, k ):
   i = len(features)
   suggestions = []
-  while len(suggestions) < k and i > 0:
+  while len(suggestions) < k and i >= 0:
     candidates = ssaccuracy(i, features)
     for f in candidates:
       if int(f[0]) not in set(suggestions) and clause(f[0]) == clause_requested:

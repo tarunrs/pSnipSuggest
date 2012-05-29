@@ -1,9 +1,11 @@
-# select_parser.py
 # Copyright 2010, Paul McGuire
 #
 # a simple SELECT statement parser, taken from SQLite's SELECT statement
 # definition at http://www.sqlite.org/lang_select.html
-# Edited by Tarun Ronur Sasikumar, 2012
+# Original file at http://pyparsing.wikispaces.com/file/view/select_parser.py
+# Modified by Tarun Sasikumar, sasikuma@cse.ohio-state.edu
+
+
 from pyparsing import *
 
 LPAR,RPAR,COMMA = map(Suppress,"(),")
